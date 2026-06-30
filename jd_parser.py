@@ -13,7 +13,6 @@ from dotenv import load_dotenv
 from core.llm_provider import get_llm
 
 load_dotenv()
-# Setup local cache path relative to this script
 CACHE_FILE = Path(__file__).resolve().parent / "jd_cache.json"
 
 # ==========================================
