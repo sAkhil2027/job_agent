@@ -163,8 +163,6 @@ def parse_jd(jd_text: str, meta_title: str, meta_company: str, meta_location: st
         print("[Cache Miss] No cached result found. Calling LLM...")
     else:
         print("[Cache Bypassed] Cache disabled. Calling LLM...")
-    
-    # Dynamic LLM Provider selection with failover support
     llm = get_llm(temperature=0.0)
     structured_llm = llm.with_structured_output(ParsedJD)
     chain = prompt | structured_llm
