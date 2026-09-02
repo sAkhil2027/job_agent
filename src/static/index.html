@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Resume Parser & Autonomous Job Matching Agent</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+    <div class="background-decorations">
+        <div class="glow glow-1"></div>
+        <div class="glow glow-2"></div>
+        <div class="glow glow-3"></div>
+    </div>
+
+    <div class="app-container">
+        <header class="app-header">
+            <div class="logo-area">
+                <div class="logo-icon">
+                    <i data-lucide="sparkles"></i>
+                </div>
+                <div>
+                    <div class="header-title-row">
+                        <h1>ParseResume AI</h1>
+                        <span class="engine-badge">
+                            <i data-lucide="zap" class="badge-icon"></i>
+                            Groq Llama 3 & Vector Engine
+                        </span>
+                    </div>
+                    <p class="subtitle">Extract structured JSON from PDF Resumes & Automatically Match Jobs with AI</p>
+                </div>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <!-- Left Side: Upload, Instructions & Terminal -->
+            <section class="panel-left">
+                <!-- Upload Card -->
+                <div class="glass-card upload-card">
+                    <div class="card-header">
+                        <i data-lucide="file-up"></i>
+                        <h2>Upload Resume</h2>
+                    </div>
+                    
+                    <div class="drag-drop-area" id="dropZone">
+                        <input type="file" id="fileInput" accept=".pdf" hidden>
+                        <div class="upload-icon-wrapper">
+                            <i data-lucide="upload-cloud" class="cloud-icon"></i>
+                        </div>
+                        <h3>Drag & drop your PDF resume here</h3>
+                        <p class="file-limits">Supports PDF files up to 10MB</p>
+                        <button type="button" class="btn btn-primary" id="browseBtn">
+                            <i data-lucide="folder-open"></i>
+                            <span>Browse Files</span>
+                        </button>
+                    </div>
+
+                    <div class="file-status-container hidden" id="fileStatusContainer">
+                        <div class="file-info-bar">
+                            <i data-lucide="file-text" class="file-icon"></i>
+                            <div class="file-details">
+                                <span class="file-name" id="fileName">resume.pdf</span>
+                                <span class="file-size" id="fileSize">0 KB</span>
+                            </div>
+                            <button class="btn-icon" id="clearFileBtn" title="Remove file">
+                                <i data-lucide="x"></i>
+                            </button>
+                        </div>
+
+                        <button type="button" class="btn btn-success btn-full" id="parseBtn">
+                            <span>Parse Resume</span>
+                            <i data-lucide="arrow-right"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Instructions Card -->
+                <div class="glass-card instructions-card">
+                    <div class="card-header">
+                        <i data-lucide="cpu"></i>
+                        <h2>How It Works</h2>
+                    </div>
+                    <div class="instructions-body">
+                        <div class="instruction-step">
+                            <span class="step-num">1</span>
+                            <p>Upload candidate resume in standard PDF format.</p>
+                        </div>
+                        <div class="instruction-step">
+                            <span class="step-num">2</span>
+                            <p>Text is extracted using <strong>pypdf</strong> & vectorized locally.</p>
+                        </div>
+                        <div class="instruction-step">
+                            <span class="step-num">3</span>
+                            <p><strong>Groq Llama 3</strong> shapes fields into structured JSON schema.</p>
+                        </div>
+                        <div class="instruction-step">
+                            <span class="step-num">4</span>
+                            <p><strong>Autonomous Agent</strong> searches, ranks & enqueues matching jobs.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Terminal Card -->
+                <div class="glass-card agent-card">
+                    <div class="card-header terminal-header">
+                        <div class="terminal-dots">
+                            <span class="dot red"></span>
+                            <span class="dot yellow"></span>
+                            <span class="dot green"></span>
+                        </div>
+                        <h2 style="flex-grow: 1; margin: 0; font-size: 0.95rem;">Agent Terminal</h2>
+                        <span class="status-badge" id="agentStatusBadge">OFFLINE</span>
+                    </div>
+                    <div class="terminal-container">
+                        <div class="terminal-body" id="agentTerminal">
+                            <span class="terminal-line system">[System] Waiting to connect...</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Side: JSON Parser Output & Matches -->
+            <section class="panel-right">
+                <div class="glass-card output-card">
+                    <div class="card-header output-header">
+                        <div class="header-title">
+                            <i data-lucide="code"></i>
+                            <h2>Parsed JSON Output</h2>
+                        </div>
+                        <div class="header-actions">
+                            <button class="btn btn-primary btn-sm hidden" id="matchJobsBtn">
+                                <i data-lucide="search"></i>
+                                <span>Find Matches</span>
+                            </button>
+                            <button class="btn btn-secondary btn-sm hidden" id="copyBtn">
+                                <i data-lucide="copy"></i>
+                                <span>Copy JSON</span>
+                            </button>
+                            <button class="btn btn-secondary btn-sm hidden" id="downloadBtn">
+                                <i data-lucide="download"></i>
+                                <span>Download</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="output-viewport" id="outputViewport">
+                        <div class="empty-state" id="emptyState">
+                            <i data-lucide="braces" class="empty-icon"></i>
+                            <h3>No Parsed Data</h3>
+                            <p>Upload and parse a resume on the left to see the structured JSON output and job matches here.</p>
+                        </div>
+
+                        <div class="loader-state hidden" id="loaderState">
+                            <div class="spinner"></div>
+                            <h3 id="loaderTitle">Parsing Resume</h3>
+                            <p id="loaderDesc">Extracting text, consulting Groq API, and saving to database...</p>
+                            <div class="progress-bar-container">
+                                <div class="progress-bar-fill" id="progressBar"></div>
+                            </div>
+                        </div>
+
+                        <pre class="json-code-container hidden" id="jsonCodeContainer"><code id="jsonContent"></code></pre>
+                    </div>
+                </div>
+
+                <!-- Matches Section -->
+                <div class="glass-card matches-card hidden" id="matchesCard" style="margin-top: 1.5rem;">
+                    <div class="card-header">
+                        <i data-lucide="briefcase"></i>
+                        <h2>Matching Jobs</h2>
+                    </div>
+                    <div class="matches-list" id="matchesList">
+                        <!-- Matches will be injected here -->
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+    </script>
+</body>
+</html>
