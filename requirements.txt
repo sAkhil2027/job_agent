@@ -1,0 +1,9 @@
+pypdf>=4.0.0
+pg8000>=1.30.0
+python-dotenv>=1.0.0
+sentence-transformers>=2.0.0
+numpy>=1.20.0
+scikit-learn>=1.0.0
+requests>=2.20.0
+beautifulsoup4>=4.10.0
+playwright>=1.40.0
