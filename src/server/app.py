@@ -78,6 +78,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Autonomous Job Matcher API",
+    openapi_tags=[{"name": "Core", "description": "Core matching and parsing endpoints"}, {"name": "Agent", "description": "Autonomous background agent stream and control"}],
     description="Production-grade AI-powered Resume Parser and Autonomous Job Matcher",
     version="1.0.0",
     lifespan=lifespan
