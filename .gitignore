@@ -1,4 +1,24 @@
-# Python
+# ==============================================================================
+# Git Ignore Configuration for Autonomous Job Matcher & Resume Parser
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Environment Variables & Secrets (CRITICAL: Never commit API keys or credentials)
+# ------------------------------------------------------------------------------
+.env
+.env.*
+!.env.template
+!.env.example
+*.pem
+*.key
+*.cert
+*.crt
+credentials.json
+service_account.json
+
+# ------------------------------------------------------------------------------
+# 2. Python & Bytecode
+# ------------------------------------------------------------------------------
 __pycache__/
 *.py[cod]
 *$py.class
@@ -16,26 +36,110 @@ parts/
 sdist/
 var/
 wheels/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
-# Environment & Secrets
-.env
-.env.local
+# ------------------------------------------------------------------------------
+# 3. Virtual Environments
+# ------------------------------------------------------------------------------
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+bin/
+include/
+Lib/
+Scripts/
 
-# Databases & Runtime
+# ------------------------------------------------------------------------------
+# 4. Databases, Local Storage & Runtime Caches
+# ------------------------------------------------------------------------------
 *.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
 *.sqlite3
+*.dump
+*.sql.gz
 
-# IDE & Editor
+# Local application data directory
+data/
+!data/.gitkeep
+
+# Local JD and embeddings cache
+jd_cache.json
+*.cache
+
+# ------------------------------------------------------------------------------
+# 5. Browser Automation & Playwright Artifacts
+# ------------------------------------------------------------------------------
+data/browser_profile/
+data/screenshots/
+browser_profile/
+screenshots/
+.playwright/
+playwright-report/
+test-results/
+blob-report/
+*.trace.zip
+
+# ------------------------------------------------------------------------------
+# 6. Testing, Code Quality & Coverage
+# ------------------------------------------------------------------------------
+.pytest_cache/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
+
+# ------------------------------------------------------------------------------
+# 7. Local Logs & Scratch Scripts
+# ------------------------------------------------------------------------------
+logs/
+*.log
+scratch/
+scratch_*.py
+test_db_server.py
+verify_status.py
+
+# ------------------------------------------------------------------------------
+# 8. IDEs & Editors
+# ------------------------------------------------------------------------------
 .vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
 .idea/
 *.swp
 *.swo
+*.swn
+*~
+*.bak
+*.sublime-project
+*.sublime-workspace
 
-# Local scratch/logs/data
-data/
-scratch/
-logs/
-*.log
+# ------------------------------------------------------------------------------
+# 9. Operating System Artifacts
+# ------------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
