@@ -61,3 +61,6 @@ Open your browser at: [http://127.0.0.1:8000/](http://127.0.0.1:8000/)
 ```bash
 python -m pytest tests/
 ```
+
+---
+*Release v1.0.0 ready for production and Hugging Face Spaces deployment.*
