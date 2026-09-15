@@ -187,3 +187,10 @@ Provide routing endpoints and stream system metrics.
 - Submission timestamp immutable
 **Status:** [x]
 
+
+
+## 8. Hugging Face Spaces & Container Deployment
+- [x] Pass
+- Validated non-root user 1000 execution
+- Validated pre-cached SentenceTransformer embeddings
+- Validated port 7860 ASGI binding
