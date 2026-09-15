@@ -1,10 +1,8 @@
 import sys
+import os
 import logging
-from http.server import ThreadingHTTPServer
+import uvicorn
 from src.config import Config
-from src.database.connection import initialize_database
-from src.server.router import Router
-from src.services.agent import agent_instance
 
 # Set up logging configuration
 logging.basicConfig(
@@ -18,7 +16,13 @@ logging.basicConfig(
 logger = logging.getLogger("run")
 
 def main():
-    logger.info("Starting Resume Parser Application...")
+    # Check CLI arguments
+    if "--worker" in sys.argv:
+        import worker
+        worker.main()
+        return
+
+    logger.info("Starting Autonomous Job Matcher Application (FastAPI + Uvicorn)...")
     
     # 1. Validate configuration
     try:
@@ -55,39 +59,18 @@ def main():
         logger.error(f"Capability graph validation failed: {e}")
         sys.exit(1)
 
+    # Run Uvicorn ASGI server
+    from src.server.app import app
+    host = getattr(Config, "HOST", "0.0.0.0")
+    port = int(getattr(Config, "PORT", 8000))
+    logger.info(f"Launching Uvicorn server on http://{host}:{port}/")
 
-    # 2. Initialize database
-    try:
-        initialize_database()
-        logger.info("Database initialized successfully.")
-    except Exception as e:
-        logger.error(f"Database initialization failed: {e}")
-        sys.exit(1)
-        
-    # Start background agent
-    logger.info("Starting autonomous background job matching agent...")
-    agent_instance.start()
-
-    # Start background application worker
-    logger.info("Starting background application worker...")
-    from src.workers.application_worker import ApplicationWorker
-    app_worker = ApplicationWorker(interval_seconds=5.0)
-    app_worker.start()
-        
-    # 3. Start Web Server
-    server_address = (Config.HOST, Config.PORT)
-    httpd = ThreadingHTTPServer(server_address, Router)
-    logger.info(f"Server running at http://{Config.HOST}:{Config.PORT}/")
-    
-    try:
-        httpd.serve_forever()
-    except KeyboardInterrupt:
-        logger.info("Server shutting down...")
-    finally:
-        agent_instance.stop()
-        app_worker.stop()
-        httpd.server_close()
-        logger.info("Server stopped.")
+    uvicorn.run(
+        app,
+        host=host,
+        port=port,
+        log_level="info"
+    )
 
 if __name__ == "__main__":
     main()
