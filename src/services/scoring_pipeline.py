@@ -1158,22 +1158,9 @@ class ScoringPipeline:
         except Exception as metrics_err:
             logger.debug(f"Failed to record match metrics: {metrics_err}")
 
-        # Compute Application Decision
-        try:
-            from src.services.application_decision_engine import ApplicationDecisionEngine
-            app_decision = ApplicationDecisionEngine.evaluate(final_score, confidence_val).to_dict()
-            
-            # Auto-enqueue if decision is AUTO_APPLY and IDs are present
-            if app_decision.get("decision") == "AUTO_APPLY" and resume_id and job_id:
-                try:
-                    from src.services.application_queue import enqueue_application
-                    enqueue_application(resume_id, job_id)
-                    logger.info(f"Auto-enqueued application for resume {resume_id} and job {job_id}.")
-                except Exception as enqueue_err:
-                    logger.error(f"Failed to auto-enqueue application: {enqueue_err}")
-        except Exception as decision_err:
-            logger.error(f"Failed to evaluate application decision: {decision_err}")
-            app_decision = {"decision": "REVIEW", "reason": f"Decision engine failure: {decision_err}", "confidence": confidence_val}
+        # Application Decision (Informational)
+        from src.services.application_decision_engine import ApplicationDecisionEngine
+        app_decision = ApplicationDecisionEngine.evaluate(final_score, confidence_val).to_dict()
 
         return MatchResult(
             match_score=round(final_score / 100.0, 4),
