@@ -58,7 +58,8 @@ class BrowserDriver:
         launch_args = [
             "--disable-blink-features=AutomationControlled",
             "--no-sandbox",
-            "--disable-setuid-sandbox"
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage"
         ]
         
         self.context = self.playwright.chromium.launch_persistent_context(
