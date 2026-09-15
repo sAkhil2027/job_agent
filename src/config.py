@@ -15,11 +15,15 @@ class Config:
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
     # Server & DB Settings
+    IS_HF_SPACE = bool(os.getenv("SPACE_ID") or os.getenv("HF_SPACE"))
+    ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
     DATABASE_URL = os.getenv("DATABASE_URL")
-    PORT = int(os.getenv("PORT", "8000"))
-    HOST = os.getenv("HOST", "127.0.0.1")
-    
-    # Browser Automation Settings
+    USE_POSTGRES = os.getenv("USE_POSTGRES", "false").lower() in ("true", "1", "yes")
+    HOST = os.getenv("HOST", "0.0.0.0")
+    PORT = int(os.getenv("PORT", "7860" if os.getenv("SPACE_ID") else "8000"))
+    API_KEY = os.getenv("API_KEY", "")
+    MAX_UPLOAD_SIZE = int(os.getenv("MAX_UPLOAD_SIZE", str(10 * 1024 * 1024))) # 10 MB limit
+    ENABLE_IN_PROCESS_WORKERS = os.getenv("ENABLE_IN_PROCESS_WORKERS", "true").lower() in ("true", "1", "yes")
     HEADLESS_MODE = os.getenv("HEADLESS_MODE", "false").lower() in ("true", "1", "yes")
     BROWSER_PROFILE_DIR = BASE_DIR / os.getenv("BROWSER_PROFILE_DIR", "data/browser_profile")
     SCREENSHOT_DIR = BASE_DIR / os.getenv("SCREENSHOT_DIR", "data/screenshots")
@@ -32,7 +36,19 @@ class Config:
     AGENT_INTERVAL_SECONDS = int(os.getenv("AGENT_INTERVAL_SECONDS", "600"))  # Default to 10 minutes
     MAX_JOBS_TO_EVALUATE = int(os.getenv("MAX_JOBS_TO_EVALUATE", "3"))        # Only parse/evaluate top 3 jobs per run
     LLM_API_URL = os.getenv("LLM_API_URL", "https://api.groq.com/openai/v1/chat/completions")
-    LLM_MODEL = os.getenv("LLM_MODEL", "llama-3.1-8b-instant")
+    LLM_MODEL = os.getenv("LLM_MODEL", "openai/gpt-oss-20b")
+    
+    # Comma-separated list of fallback models to try in sequence if primary fails
+    _fallback_env = os.getenv("LLM_FALLBACK_MODELS", "")
+    LLM_FALLBACK_MODELS = [m.strip() for m in _fallback_env.split(",") if m.strip()] if _fallback_env else [
+        "openai/gpt-oss-20b",
+        "qwen/qwen3.8-27b",
+        "qwen/qwen3.6-27b",
+        "groq/compound-mini",
+        "openai/gpt-oss-120b",
+        "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant"
+    ]
 
     # Configurable router thresholds
     HIGH_CONFIDENCE_THRESHOLD = float(os.getenv("HIGH_CONFIDENCE_THRESHOLD", "0.90"))
