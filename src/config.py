@@ -15,6 +15,7 @@ class Config:
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
     # Server & DB Settings
+    # Auto-detect Hugging Face Spaces environment
     IS_HF_SPACE = bool(os.getenv("SPACE_ID") or os.getenv("HF_SPACE"))
     ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
     DATABASE_URL = os.getenv("DATABASE_URL")
