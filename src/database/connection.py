@@ -1,3 +1,4 @@
+import threading
 import sqlite3
 import os
 import re
@@ -6,8 +7,32 @@ from src.config import Config
 
 logger = logging.getLogger(__name__)
 
-# Check if PostgreSQL is explicitly enabled via environment
-USE_POSTGRES = os.getenv("USE_POSTGRES", "false").lower() in ("true", "1", "yes")
+# Global connection pool for PostgreSQL
+_pg_pool = None
+_pg_pool_lock = threading.Lock()
+
+def get_postgres_pool():
+    """Returns singleton ThreadedConnectionPool for PostgreSQL."""
+    global _pg_pool
+    if _pg_pool is None:
+        with _pg_pool_lock:
+            if _pg_pool is None:
+                if not Config.DATABASE_URL:
+                    raise ValueError("DATABASE_URL is not set but PostgreSQL is required.")
+                try:
+                    import psycopg2
+                    from psycopg2.pool import ThreadedConnectionPool
+                    logger.info("Initializing PostgreSQL ThreadedConnectionPool (min=1, max=10)...")
+                    _pg_pool = ThreadedConnectionPool(
+                        minconn=1,
+                        maxconn=10,
+                        dsn=Config.DATABASE_URL,
+                        connect_timeout=10
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to create PostgreSQL ThreadedConnectionPool: {e}")
+                    raise
+    return _pg_pool
 
 class PostgresCursorWrapper:
     """
@@ -34,11 +59,11 @@ class PostgresCursorWrapper:
             if "ON CONFLICT" not in translated.upper():
                 translated += " ON CONFLICT DO NOTHING"
 
-        # 4. Replace 'INSERT OR REPLACE INTO' with 'INSERT INTO ... ON CONFLICT DO UPDATE/NOTHING'
+        # 4. Replace 'INSERT OR REPLACE INTO' with 'INSERT INTO ... ON CONFLICT DO NOTHING'
         elif "INSERT OR REPLACE INTO" in translated.upper():
             translated = re.sub(r"INSERT OR REPLACE INTO", "INSERT INTO", translated, flags=re.IGNORECASE)
             if "ON CONFLICT" not in translated.upper():
-                translated += " ON CONFLICT (id) DO UPDATE SET updated_at = CURRENT_TIMESTAMP"
+                translated += " ON CONFLICT DO NOTHING"
 
         return translated
 
@@ -69,6 +94,13 @@ class PostgresCursorWrapper:
     def fetchmany(self, size=None):
         return self._cursor.fetchmany(size) if size else self._cursor.fetchmany()
 
+    def executemany(self, sql: str, seq_of_parameters):
+        translated_sql = self._translate_sql(sql)
+        if not translated_sql:
+            return self
+        self._cursor.executemany(translated_sql, seq_of_parameters)
+        return self
+
     @property
     def rowcount(self):
         return self._cursor.rowcount
@@ -76,10 +108,12 @@ class PostgresCursorWrapper:
 
 class PostgresConnectionWrapper:
     """
-    Connection wrapper around psycopg2 connection.
+    Connection wrapper around pooled psycopg2 connection.
     """
-    def __init__(self, psycopg2_conn):
+    def __init__(self, psycopg2_conn, pool=None):
         self._conn = psycopg2_conn
+        self._pool = pool
+        self._closed = False
 
     def cursor(self):
         return PostgresCursorWrapper(self._conn.cursor())
@@ -88,10 +122,24 @@ class PostgresConnectionWrapper:
         self._conn.commit()
 
     def rollback(self):
-        self._conn.rollback()
+        try:
+            self._conn.rollback()
+        except Exception:
+            pass
 
     def close(self):
-        self._conn.close()
+        if not self._closed:
+            self._closed = True
+            if self._pool:
+                try:
+                    self._pool.putconn(self._conn)
+                except Exception as e:
+                    logger.warning(f"Error returning connection to pool: {e}")
+            else:
+                try:
+                    self._conn.close()
+                except Exception:
+                    pass
 
     def execute(self, sql: str, params=None):
         cur = self.cursor()
@@ -101,19 +149,30 @@ class PostgresConnectionWrapper:
 
 def get_connection():
     """
-    Returns active DB connection: PostgreSQL if USE_POSTGRES=true and available,
+    Returns active DB connection: PostgreSQL if USE_POSTGRES=true or ENVIRONMENT=production,
     otherwise defaults to fast local SQLite (data/job_matcher.db).
-    """
-    if USE_POSTGRES and Config.DATABASE_URL:
-        try:
-            import psycopg2
-            conn = psycopg2.connect(Config.DATABASE_URL, connect_timeout=10)
-            logger.info("Connected to Cloud PostgreSQL (Neon DB).")
-            return PostgresConnectionWrapper(conn)
-        except Exception as e:
-            logger.warning(f"PostgreSQL connection failed: {e}. Falling back to local SQLite.")
 
-    # Local SQLite Fallback
+    If in production or USE_POSTGRES=true, failure to connect to PostgreSQL raises an error
+    immediately rather than silently falling back to ephemeral container disk.
+    """
+    use_postgres = (
+        os.getenv("USE_POSTGRES", "false").lower() in ("true", "1", "yes") or
+        getattr(Config, "ENVIRONMENT", "development") == "production"
+    )
+
+    if use_postgres:
+        if not Config.DATABASE_URL:
+            raise RuntimeError("USE_POSTGRES=true or ENVIRONMENT=production, but DATABASE_URL is not set.")
+        try:
+            pool = get_postgres_pool()
+            conn = pool.getconn()
+            return PostgresConnectionWrapper(conn, pool=pool)
+        except Exception as e:
+            logger.error(f"PostgreSQL connection failed: {e}")
+            # Strict fail-fast in production / PostgreSQL mode
+            raise RuntimeError(f"PostgreSQL connection failed in production mode: {e}") from e
+
+    # Local SQLite Fallback for development
     db_dir = os.path.join(Config.BASE_DIR, "data")
     os.makedirs(db_dir, exist_ok=True)
     db_path = os.path.join(db_dir, "job_matcher.db")
@@ -146,57 +205,60 @@ def initialize_database():
         for col, col_type in [("matched_skills", "TEXT"), ("missing_skills", "TEXT"), ("reasoning", "TEXT"), ("match_version", "TEXT"), ("resume_hash", "TEXT"), ("soft_matches", "TEXT"), ("matched_capabilities", "TEXT"), ("score_breakdown", "TEXT"), ("level1_key", "TEXT")]:
             try:
                 cursor.execute(f"ALTER TABLE matches ADD COLUMN {col} {col_type};")
+                conn.commit()
             except Exception:
-                pass
+                conn.rollback()
 
         # Safely migrate jobs table columns
         for col, col_type in [("jd_hash", "TEXT"), ("parser_version", "TEXT")]:
             try:
                 cursor.execute(f"ALTER TABLE jobs ADD COLUMN {col} {col_type};")
+                conn.commit()
             except Exception:
-                pass
+                conn.rollback()
 
         # Safely migrate SQLite application_queue table if CHECK constraint is outdated
-        try:
-            cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='application_queue';")
-            tbl_row = cursor.fetchone()
-            if tbl_row and tbl_row[0] and "'RUNNING'" not in tbl_row[0]:
-                logger.info("Migrating application_queue SQLite table schema for new statuses...")
-                cursor.execute("PRAGMA foreign_keys = OFF;")
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS application_queue_new (
-                        id TEXT PRIMARY KEY,
-                        job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
-                        resume_id TEXT NOT NULL REFERENCES resumes(id) ON DELETE CASCADE,
-                        status TEXT NOT NULL DEFAULT 'QUEUED' CHECK(
-                            status IN (
-                                'QUEUED', 'RUNNING', 'PROCESSING', 'FORM_FILLING', 
-                                'AWAITING_USER_SUBMIT', 'SUBMITTED', 'COMPLETED', 
-                                'FAILED', 'RETRY', 'RETRYING'
-                            )
-                        ),
-                        attempt_count INTEGER DEFAULT 0,
-                        attempts INTEGER DEFAULT 0,
-                        error_message TEXT,
-                        error_msg TEXT,
-                        browser_session_id TEXT,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        started_at TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        completed_at TIMESTAMP,
-                        CONSTRAINT unique_queue UNIQUE (resume_id, job_id)
-                    );
-                """)
-                cursor.execute("""
-                    INSERT OR IGNORE INTO application_queue_new (id, job_id, resume_id, status, attempts, created_at, updated_at)
-                    SELECT id, job_id, resume_id, status, attempts, created_at, updated_at FROM application_queue;
-                """)
-                cursor.execute("DROP TABLE application_queue;")
-                cursor.execute("ALTER TABLE application_queue_new RENAME TO application_queue;")
-                cursor.execute("PRAGMA foreign_keys = ON;")
-                conn.commit()
-        except Exception as mig_err:
-            logger.warning(f"Note on application_queue status migration: {mig_err}")
+        if isinstance(conn, sqlite3.Connection):
+            try:
+                cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='application_queue';")
+                tbl_row = cursor.fetchone()
+                if tbl_row and tbl_row[0] and "'RUNNING'" not in tbl_row[0]:
+                    logger.info("Migrating application_queue SQLite table schema for new statuses...")
+                    cursor.execute("PRAGMA foreign_keys = OFF;")
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS application_queue_new (
+                            id TEXT PRIMARY KEY,
+                            job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+                            resume_id TEXT NOT NULL REFERENCES resumes(id) ON DELETE CASCADE,
+                            status TEXT NOT NULL DEFAULT 'QUEUED' CHECK(
+                                status IN (
+                                    'QUEUED', 'RUNNING', 'PROCESSING', 'FORM_FILLING', 
+                                    'AWAITING_USER_SUBMIT', 'SUBMITTED', 'COMPLETED', 
+                                    'FAILED', 'RETRY', 'RETRYING'
+                                )
+                            ),
+                            attempt_count INTEGER DEFAULT 0,
+                            attempts INTEGER DEFAULT 0,
+                            error_message TEXT,
+                            error_msg TEXT,
+                            browser_session_id TEXT,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            started_at TIMESTAMP,
+                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            completed_at TIMESTAMP,
+                            CONSTRAINT unique_queue UNIQUE (resume_id, job_id)
+                        );
+                    """)
+                    cursor.execute("""
+                        INSERT OR IGNORE INTO application_queue_new (id, job_id, resume_id, status, attempts, created_at, updated_at)
+                        SELECT id, job_id, resume_id, status, attempts, created_at, updated_at FROM application_queue;
+                    """)
+                    cursor.execute("DROP TABLE application_queue;")
+                    cursor.execute("ALTER TABLE application_queue_new RENAME TO application_queue;")
+                    cursor.execute("PRAGMA foreign_keys = ON;")
+                    conn.commit()
+            except Exception as mig_err:
+                logger.warning(f"Note on application_queue status migration: {mig_err}")
 
         # Safely migrate application_queue table columns
         app_queue_cols = [
@@ -210,15 +272,17 @@ def initialize_database():
         for col, col_type in app_queue_cols:
             try:
                 cursor.execute(f"ALTER TABLE application_queue ADD COLUMN {col} {col_type};")
+                conn.commit()
             except Exception:
-                pass
+                conn.rollback()
 
         # Safely ensure indexes exist
         try:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_app_queue_polling ON application_queue(status, created_at);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_queue_id ON application_audit_logs(queue_id, created_at);")
+            conn.commit()
         except Exception:
-            pass
+            conn.rollback()
 
         conn.commit()
         logger.info("Database tables and indexes initialized successfully.")
