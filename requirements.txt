@@ -1,4 +1,9 @@
+fastapi>=0.110.0
+uvicorn[standard]>=0.28.0
+gunicorn>=21.2.0
+python-multipart>=0.0.9
 pypdf>=4.0.0
+psycopg2-binary>=2.9.9
 pg8000>=1.30.0
 python-dotenv>=1.0.0
 sentence-transformers>=2.0.0
