@@ -491,17 +491,6 @@ def handle_match_jobs(handler, body_bytes):
         # Sort matches by score descending
         matches.sort(key=lambda x: x["score"], reverse=True)
 
-        # Query application statuses for this resume
-        def fetch_app_statuses(conn):
-            cursor = conn.cursor()
-            cursor.execute("SELECT job_id, status FROM application_queue WHERE resume_id = ?", (resume_id,))
-            return dict(cursor.fetchall())
-
-        app_statuses = execute_db_with_retry(fetch_app_statuses)
-        for m in matches:
-            m["application_status"] = app_statuses.get(m["job_id"])
-            m["applied"] = m["job_id"] in app_statuses
-        
         response_data = {"resume_id": resume_id, "matches": matches}
         response_bytes = json.dumps(response_data).encode("utf-8")
         
